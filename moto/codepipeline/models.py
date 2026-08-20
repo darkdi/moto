@@ -1,5 +1,6 @@
 import json
 from typing import Any
+from uuid import uuid4
 
 from moto.codepipeline.exceptions import (
     InvalidStructureException,
@@ -23,6 +24,7 @@ class CodePipeline(BaseModel):
 
         self.pipeline = self.add_default_values(pipeline)
         self.tags: dict[str, str] = {}
+        self.execution_ids: list[str] = []
 
         self._arn = f"arn:{get_partition(region)}:codepipeline:{region}:{account_id}:{pipeline['name']}"
         self._created = utcnow()
@@ -49,6 +51,11 @@ class CodePipeline(BaseModel):
                     action["inputArtifacts"] = []
 
         return pipeline
+
+    def start_execution(self) -> str:
+        execution_id = str(uuid4())
+        self.execution_ids.append(execution_id)
+        return execution_id
 
     def validate_tags(self, tags: list[dict[str, str]]) -> None:
         for tag in tags:
@@ -133,6 +140,16 @@ class CodePipelineBackend(BaseBackend):
             )
 
         return codepipeline.pipeline, codepipeline.metadata
+
+    def start_pipeline_execution(self, name: str) -> str:
+        codepipeline = self.pipelines.get(name)
+
+        if not codepipeline:
+            raise PipelineNotFoundException(
+                f"Account '{self.account_id}' does not have a pipeline with name '{name}'"
+            )
+
+        return codepipeline.start_execution()
 
     def update_pipeline(self, pipeline: dict[str, Any]) -> dict[str, Any]:
         codepipeline = self.pipelines.get(pipeline["name"])
